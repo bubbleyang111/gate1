@@ -502,6 +502,13 @@ def main():
     if uniq and not success and len(worker_errors) == len(uniq):
         die("Worker 全部请求异常, 检测服务不可用 — 本次运行判定失败 (不生成空结果)")
 
+    # 低通过量保护: 数据源异常时 (如官方 API 超时被迫走陈旧镜像源) 检测成功数会骤降,
+    # 此时若继续发布会把上次的好节点池覆盖掉。直接判定失败退出, workflow 后续的
+    # Pages 上传/部署步骤不会执行, 线上保留上次成功发布的 nodes.txt。
+    min_success = int(os.environ.get("MIN_SUCCESS_NODES", "10"))
+    if len(success) < min_success:
+        die(f"检测成功节点只有 {len(success)} 个 (< 最低发布线 {min_success}), 疑似数据源异常 — 本次运行判定失败, 不覆盖上次发布的 nodes.txt")
+
     data = build_outputs(results, raw_count, sstp_count, source)
     log("RESULT", f"可用节点: {len(success)}")
     log("RESULT", f"国家数量: {data['stats']['countries']}")
